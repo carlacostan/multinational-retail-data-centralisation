@@ -1,0 +1,23 @@
+{
+    "sqltools.connections": [
+        {
+            "previewLimit": 50,
+            "server": "192.168.64.1",
+            "port": 5432,
+            "driver": "PostgreSQL",
+            "name": "Pagila",
+            "database": "Pagila",
+            "username": "postgres"
+        },
+        {
+            "previewLimit": 50,
+            "server": "192.168.64.1",
+            "port": 5432,
+            "askForPassword": true,
+            "driver": "PostgreSQL",
+            "name": "sales_data",
+            "database": "sales_data",
+            "username": "postgres"
+        }
+    ]
+}

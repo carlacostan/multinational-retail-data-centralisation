@@ -1,24 +1,90 @@
-pip install PyYAML
 import yaml
 from sqlalchemy import create_engine
+from sqlalchemy import text
+import pandas as pd
 
 class DatabaseConnector:
-    def read_db_creds():
-        return yaml.load(db_creds.yml)
-    #Now create a method init_db_engine which will read the credentials from the return of read_db_creds and initialise and return an sqlalchemy database engine.
-    def init_db_engine(read_db_creds):
+    def __init__(self, db_creds='/root/multinational-retail-data-centralisation728/db_creds.yml'):
+        """ 
+        Initialises the DatabaseConnector with the path to the DB credentials containing file.
+
+        Parameters:
+        db_cred(str): The path to the YML file containing the credentials.
+                      Defaults to db_creds.yml. 
+        """
+        self.db_creds = db_creds
+        self.engine = self.init_db_engine()
+
+    def read_db_creds(self):
+        """
+        Read the database credentials from the YAML file and return them as a dictionary.
+
+        Returns:
+        dict: A dictionary containing the database credentials.
+        """
+        with open(self.db_creds, 'r') as file:
+            creds = yaml.safe_load(file)
+        return creds
+    
+    def init_db_engine(self):
+        """
+        Initialize and return an SQLAlchemy engine using the database credentials.
+
+        Returns:
+        sqlalchemy.engine.Engine: An SQLAlchemy engine object.
+        """
         DATABASE_TYPE = 'postgresql'
         DBAPI = 'psycopg2'
-        engine = create_engine(f"{DATABASE_TYPE}+{DBAPI}://{RDS_USER}:{RDS_PASSWORD}@{RDS_HOST}:{RDS_PORT}/{RDS_DATABASE}")
-        
-    engine.connect()
+        creds = self.read_db_creds()
+        engine = create_engine(f"{DATABASE_TYPE}+{DBAPI}://{creds['RDS_USER']}:{creds['RDS_PASSWORD']}@{creds['RDS_HOST']}:{creds['RDS_PORT']}/{creds['RDS_DATABASE']}")
+        return engine
+    
+    def list_db_tables(self):
+        """
+        List all tables in the database.
 
+        Returns:
+        tables: A list of table names in the database.
+        """
+        with self.engine.connect() as connection:
+            query = "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'"
+            result = connection.execute(text(query))
+            tables = [row[0] for row in result]
+        return tables
+    
+    def get_table_columns(self, table_name):
+        """
+        Get the column names for a specific table in the database.
 
+        Parameters:
+        table_name (str): The name of the table to get columns from.
 
-#engine.execution_options(isolation_level='AUTOCOMMIT').connect()
+        Returns:
+        columns: A list of column names in the table.
+        """
+        with self.engine.connect() as connection:
+            query = f"SELECT column_name FROM information_schema.columns WHERE table_name = '{table_name}'"
+            result = connection.execute(text(query))
+            columns = [row[0] for row in result]
+        return columns
+    
+    def upload_to_db(self, df, table_name, database_name='sales_data', username='postgres', password='230200', host='192.168.64.1', port='5432'):
+        """
+        Upload a Pandas DataFrame to the specified table in the specified database.
 
-list_of_tables = engine.list_db_tables
-print(list_of_tables)
+        Parameters:
+        df (pandas.DataFrame): The DataFrame to upload.
+        table_name (str): The name of the table to upload the DataFrame to.
+        database_name (str): The name of the database to connect to. Defaults to 'sales_data'.
+        username (str): The username to connect to the database. Defaults to 'your_username'.
+        password (str): The password to connect to the database. Defaults to 'your_password'.
+        host (str): The host address of the database. Defaults to 'localhost'.
+        port (str): The port number of the database. Defaults to '5432'.
+        """
+        DATABASE_TYPE = 'postgresql'
+        DBAPI = 'psycopg2'
 
+        engine = create_engine(f"{DATABASE_TYPE}+{DBAPI}://{username}:{password}@{host}:{port}/{database_name}")
 
-#Using the engine from init_db_engine create a method list_db_tables to list all the tables in the database so you know which tables you can extract data from.
+        with engine.connect() as connection:
+            df.to_sql(table_name, connection, if_exists='replace', index=False)
