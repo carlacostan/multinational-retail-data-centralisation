@@ -1,10 +1,9 @@
 import yaml
-from sqlalchemy import create_engine
-from sqlalchemy import text
+from sqlalchemy import create_engine, text
 import pandas as pd
 
 class DatabaseConnector:
-    def __init__(self, db_creds='/root/multinational-retail-data-centralisation728/db_creds.yml'):
+    def __init__(self, db_creds='/Users/carlajcostan/Documents/AI Core/multinational-retail-data-centralisation728/db_creds.yml'):
         """ 
         Initialises the DatabaseConnector with the path to the DB credentials containing file.
 
@@ -15,7 +14,7 @@ class DatabaseConnector:
         self.db_creds = db_creds
         self.engine = self.init_db_engine()
 
-    def read_db_creds(self):
+    def _read_db_creds(self) -> dict:
         """
         Read the database credentials from the YAML file and return them as a dictionary.
 
@@ -24,7 +23,7 @@ class DatabaseConnector:
         """
         with open(self.db_creds, 'r') as file:
             creds = yaml.safe_load(file)
-        return creds
+        return creds    
     
     def init_db_engine(self):
         """
@@ -68,7 +67,7 @@ class DatabaseConnector:
             columns = [row[0] for row in result]
         return columns
     
-    def upload_to_db(self, df, table_name, database_name='sales_data', username='postgres', password='230200', host='192.168.64.1', port='5432'):
+    def upload_to_db(self, df, table_name, database_name='sales_data', username='postgres', password='230200', host='localhost', port='5432'):
         """
         Upload a Pandas DataFrame to the specified table in the specified database.
 
@@ -88,3 +87,6 @@ class DatabaseConnector:
 
         with engine.connect() as connection:
             df.to_sql(table_name, connection, if_exists='replace', index=False)
+
+if __name__ == "__main__":
+    DatabaseConnector()

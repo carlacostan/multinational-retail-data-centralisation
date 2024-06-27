@@ -9,69 +9,122 @@ def main():
     # Initialize the DatabaseConnector
     db_connector = DatabaseConnector(db_creds='db_creds.yml')
 
-    # Initialize the database engine
-    engine = db_connector.init_db_engine()
-
     # Initialize the DataExtractor
     data_extractor = DataExtractor(db_connector)
 
     # Initialize the DataCleaning
     data_cleaning = DataCleaning()
 
-    # Get the list of tables and find the user data table
-    tables = db_connector.list_db_tables()
+    # --- Extract and clean user data from the database ---
+    try:
+        tables = db_connector.list_db_tables()
+        user_data_table = next((table for table in tables if 'user' in table), None)
+        
+        if user_data_table:
+            print("Table containing user data:", user_data_table)
+            user_data_df = data_extractor.read_rds_table(user_data_table)
+            cleaned_user_data_df = data_cleaning.clean_user_data(user_data_df)
+            db_connector.upload_to_db(cleaned_user_data_df, 'dim_users')
+            print(cleaned_user_data_df)
+        else:
+            print('No table containing user data found.')
+    except Exception as e:
+        print(f"Error processing user data: {e}")
 
-    user_data_table = None
-    for table in tables:
-        if 'user' in table:
-            user_data_table = table
-            break
+    # --- Extract and clean card data from a PDF ---
+    try:
+        pdf_link = 'https://data-handling-public.s3.eu-west-1.amazonaws.com/card_details.pdf'
+        card_data_df = data_extractor.retrieve_pdf_data(pdf_link)
+        print('Extracted Data:')
+        print(card_data_df)
 
-    if user_data_table:
-        print("Table containing user data:", user_data_table)
-        # Extract the user data table
-        user_data_df = data_extractor.read_rds_table(user_data_table)
+        if not card_data_df.empty:
+            cleaned_card_data = data_cleaning.clean_card_data(card_data_df)
+            print(f'Cleaned Data: {cleaned_card_data}')
+            db_connector.upload_to_db(cleaned_card_data, 'dim_card_details')
+            print("Cleaned card data has been uploaded to the 'dim_card_details' table in the 'sales_data' database.")
+        else:
+            print("No data extracted from the PDF.")
+    except Exception as e:
+        print(f"Error processing card data: {e}")
 
-        # Clean the user data
-        cleaned_user_data_df = data_cleaning.clean_user_data(user_data_df)
+    # --- Extract and clean store data from the API ---
+    try:
+        store_details_endpoint = 'https://aqj7u5id95.execute-api.eu-west-1.amazonaws.com/prod/store_details/{store_number}'
+        all_store_data = data_extractor.retrieve_stores_data(store_details_endpoint)
+        print("Extracted Store Data:")
+        print(all_store_data)
 
-        # Upload the cleaned data to the dim_users table
-        db_connector.upload_to_db(cleaned_user_data_df, 'dim_users')
+        if not all_store_data.empty:
+            cleaned_store_data = data_cleaning.clean_store_data(all_store_data)
+            print("Cleaned Store Data:")
+            print(cleaned_store_data)
+            db_connector.upload_to_db(cleaned_store_data, 'dim_store_details')
+            print("Cleaned store data has been uploaded to the 'dim_store_details' table in the 'sales_data' database.")
+        else:
+            print("No store data extracted from the API.")
+    except Exception as e:
+        print(f"Error processing store data: {e}")
 
-        print(cleaned_user_data_df)
-    else:
-        print('No table containing user data found.')
+    # --- Extract and clean product data from S3 ---
+    try:
+        s3_address = 's3://data-handling-public/products.csv'
+        products_data_df = data_extractor.extract_from_s3(s3_address)
+        print("Extracted Products Data:")
+        print(products_data_df)
 
-     # PDF link
-    pdf_link = 'https://data-handling-public.s3.eu-west-1.amazonaws.com/card_details.pdf'
+        if not products_data_df.empty:
+            products_data_df = data_cleaning.convert_product_weights(products_data_df)
+            cleaned_products_data = data_cleaning.clean_products_data(products_data_df)
+            print("Cleaned Products Data:")
+            print(cleaned_products_data)
+            db_connector.upload_to_db(cleaned_products_data, 'dim_products')
+            print("Cleaned products data has been uploaded to the 'dim_products' table in the 'sales_data' database.")
+        else:
+            print("No product data extracted from S3.")
+    except Exception as e:
+        print(f"Error processing product data: {e}")
 
-    # Extract data from the PDF
-    extracted_pdf_data = data_extractor.retrieve_pdf_data(pdf_link)
+    # ---  Extract orders data table as df from RDS DB ---
+    try:
+        tables = db_connector.list_db_tables()
+        print("List of tables in the database:", tables)
 
-    # Print the extracted data
-    print('Extracted Data:')
-    print(extracted_pdf_data)
+        orders_table = 'orders_table'  # Replace with the actual orders table name
+        orders_df = data_extractor.read_rds_table(orders_table)
+        print("Extracted Orders Data:")
+        print(orders_df)
 
-    # Clean the card data
-    cleaned_card_data = data_cleaning.clean_card_data(extracted_pdf_data)
+        cleaned_orders_df = data_cleaning.clean_orders_data(orders_df)
+        print("Cleaned Orders Data:")
+        print(cleaned_orders_df)
 
-    # Print the cleaned data
-    print(f'Cleaned Data:{cleaned_card_data}')
+        db_connector.upload_to_db(cleaned_orders_df, 'orders_table')
+        print("Cleaned orders data has been uploaded to the 'orders_table'.")
+    except Exception as e:
+        print(f"Error processing orders data: {e}")
 
-    # Upload the cleaned data to the dim_card_details table in the sales_data database
-    db_connector.upload_to_db(cleaned_card_data, 'dim_card_details')
+    # --- Extract and clean date data from JSON ---
+    try:
+        json_url = 'https://data-handling-public.s3.eu-west-1.amazonaws.com/date_details.json'
+        date_data_df = data_extractor.extract_json_data(json_url)
+        print("Extracted Date Data:")
+        print(date_data_df)
 
-    print("Cleaned card data has been uploaded to the 'dim_card_details' table in the 'sales_data' database.")
+        # Print column names to verify
+        print("Columns in the extracted date data:")
+        print(date_data_df.columns)
 
-    #Extract data from the API
-    
-    stores_endpoint = 'https://aqj7u5id95.execute-api.eu-west-1.amazonaws.com/prod/number_stores'
-    number_of_stores = data_extractor.list_number_of_stores(stores_endpoint)
-
-    #Print number of stores
-    print(f"Number of stores:{number_of_stores}")
+        if not date_data_df.empty:
+            cleaned_date_data = data_cleaning.clean_date_data(date_data_df)
+            print("Cleaned Date Data:")
+            print(cleaned_date_data)
+            db_connector.upload_to_db(cleaned_date_data, 'dim_date_times')
+            print("Cleaned date data has been uploaded to the 'dim_date_times' table in the 'sales_data' database.")
+        else:
+            print("No date data extracted from JSON.")
+    except Exception as e:
+        print(f"Error processing date data: {e}")
 
 if __name__ == "__main__":
     main()
-
-    
