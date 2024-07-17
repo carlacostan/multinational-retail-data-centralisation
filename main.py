@@ -6,23 +6,27 @@ from data_extraction import DataExtractor
 from data_cleaning import DataCleaning
 
 def main():
-    # Initialize the DatabaseConnector
+    # Initialize the DatabaseConnector for the local database
     db_connector = DatabaseConnector(db_creds='db_creds.yml')
+
+    # Initialize the DatabaseConnector for the RDS database
+    rds_db_connector = DatabaseConnector(db_creds='rds_db_creds.yml')
 
     # Initialize the DataExtractor
     data_extractor = DataExtractor(db_connector)
+    rds_data_extractor = DataExtractor(rds_db_connector)
 
     # Initialize the DataCleaning
     data_cleaning = DataCleaning()
 
     # --- Extract and clean user data from the database ---
     try:
-        tables = db_connector.list_db_tables()
-        user_data_table = next((table for table in tables if 'user' in table), None)
-        
+        rds_tables = rds_db_connector.list_db_tables()
+        user_data_table = next((table for table in rds_tables if 'user' in table.lower()), None)
+
         if user_data_table:
             print("Table containing user data:", user_data_table)
-            user_data_df = data_extractor.read_rds_table(user_data_table)
+            user_data_df = rds_data_extractor.read_rds_table(user_data_table)
             cleaned_user_data_df = data_cleaning.clean_user_data(user_data_df)
             db_connector.upload_to_db(cleaned_user_data_df, 'dim_users')
             print(cleaned_user_data_df)
@@ -40,7 +44,7 @@ def main():
 
         if not card_data_df.empty:
             cleaned_card_data = data_cleaning.clean_card_data(card_data_df)
-            print(f'Cleaned Data: {cleaned_card_data}')
+            print("Cleaned Data:", cleaned_card_data)
             db_connector.upload_to_db(cleaned_card_data, 'dim_card_details')
             print("Cleaned card data has been uploaded to the 'dim_card_details' table in the 'sales_data' database.")
         else:
@@ -52,17 +56,25 @@ def main():
     try:
         store_details_endpoint = 'https://aqj7u5id95.execute-api.eu-west-1.amazonaws.com/prod/store_details/{store_number}'
         all_store_data = data_extractor.retrieve_stores_data(store_details_endpoint)
+        
+        all_store_data.to_csv('extracted_store_data.csv', index=False)
         print("Extracted Store Data:")
         print(all_store_data)
 
-        if not all_store_data.empty:
-            cleaned_store_data = data_cleaning.clean_store_data(all_store_data)
-            print("Cleaned Store Data:")
-            print(cleaned_store_data)
-            db_connector.upload_to_db(cleaned_store_data, 'dim_store_details')
-            print("Cleaned store data has been uploaded to the 'dim_store_details' table in the 'sales_data' database.")
-        else:
-            print("No store data extracted from the API.")
+        cleaned_store_data = data_cleaning.clean_store_data(all_store_data)
+        cleaned_store_data.to_csv('cleaned_store_data.csv', index=False)
+        print("Cleaned Store Data:")
+        print(cleaned_store_data)
+
+        cleaned_store_data.reset_index(drop=True, inplace=True)
+        if 'index' in cleaned_store_data.columns:
+            cleaned_store_data.drop(columns=['index'], inplace=True)
+
+        print("DataFrame columns before uploading:")
+        print(cleaned_store_data.columns)
+
+        db_connector.upload_to_db(cleaned_store_data, 'dim_store_details')
+        print("Cleaned store data has been uploaded to the 'dim_store_details' table in the 'sales_data' database.")
     except Exception as e:
         print(f"Error processing store data: {e}")
 
@@ -73,8 +85,15 @@ def main():
         print("Extracted Products Data:")
         print(products_data_df)
 
+        products_data_df['product_price'] = products_data_df['product_price'].astype(str)
+        products_data_df['product_price_clean'] = products_data_df['product_price'].str.replace('£', '').str.replace(',', '')
+        products_data_df['product_price_numeric_check'] = products_data_df['product_price_clean'].apply(lambda x: x.replace('.', '', 1).isdigit())
+        non_numeric_prices = products_data_df[~products_data_df['product_price_numeric_check']]
+        print("Problematic Rows:")
+        print(non_numeric_prices)
+        products_data_df = products_data_df[products_data_df['product_price_numeric_check']]
+
         if not products_data_df.empty:
-            products_data_df = data_cleaning.convert_product_weights(products_data_df)
             cleaned_products_data = data_cleaning.clean_products_data(products_data_df)
             print("Cleaned Products Data:")
             print(cleaned_products_data)
@@ -85,22 +104,25 @@ def main():
     except Exception as e:
         print(f"Error processing product data: {e}")
 
-    # ---  Extract orders data table as df from RDS DB ---
+    # --- Extract and clean orders data from RDS database ---
     try:
-        tables = db_connector.list_db_tables()
-        print("List of tables in the database:", tables)
+        rds_tables = rds_db_connector.list_db_tables()
+        orders_table = 'orders_table'
 
-        orders_table = 'orders_table'  # Replace with the actual orders table name
-        orders_df = data_extractor.read_rds_table(orders_table)
-        print("Extracted Orders Data:")
-        print(orders_df)
+        if orders_table in rds_tables:
+            print("Table containing orders data:", orders_table)
+            orders_df = rds_data_extractor.read_rds_table(orders_table)
+            print("Extracted Orders Data:")
+            print(orders_df)
 
-        cleaned_orders_df = data_cleaning.clean_orders_data(orders_df)
-        print("Cleaned Orders Data:")
-        print(cleaned_orders_df)
+            cleaned_orders_df = data_cleaning.clean_orders_data(orders_df)
+            print("Cleaned Orders Data:")
+            print(cleaned_orders_df)
 
-        db_connector.upload_to_db(cleaned_orders_df, 'orders_table')
-        print("Cleaned orders data has been uploaded to the 'orders_table'.")
+            db_connector.upload_to_db(cleaned_orders_df, 'orders_table')
+            print("Cleaned orders data has been uploaded to the 'orders_table'.")
+        else:
+            print(f'Table {orders_table} not found in RDS database.')
     except Exception as e:
         print(f"Error processing orders data: {e}")
 
@@ -111,7 +133,6 @@ def main():
         print("Extracted Date Data:")
         print(date_data_df)
 
-        # Print column names to verify
         print("Columns in the extracted date data:")
         print(date_data_df.columns)
 
