@@ -68,3 +68,5 @@ $RECYCLE.BIN/
 
 rds_db_creds.yml
 db_creds.yml
+__pycache__
+.vscode
