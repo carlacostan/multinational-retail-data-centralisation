@@ -16,9 +16,14 @@ class DataExtractor:
         db_connector (DatabaseConnector): An instance of the DatabaseConnector class.
         """
         self.db_connector = db_connector
-        self.api_key = 'yFBQbwXe9J3sd6zWVAMrK6lcxxr0q1lr2PT6DDMX'
+    
+        # Load the API key from the configuration file
+        with open(config_path, 'r') as file:
+            config = yaml.safe_load(file)
+            self.api_key = config['api']['key']
+        
         self.headers = {'x-api-key': self.api_key}
-
+        
     def read_rds_table(self, table_name):
         """
         Read a table from the RDS database into a pandas DataFrame.
