@@ -3,8 +3,9 @@ from database_utils import DatabaseConnector
 import tabula
 import requests
 import boto3
+import yaml
 
-# Initialize the DatabaseConnector
+# Initialise the DatabaseConnector
 db_connector = DatabaseConnector(db_creds='db_creds.yml')
 
 class DataExtractor:
@@ -21,6 +22,7 @@ class DataExtractor:
         with open(config_path, 'r') as file:
             config = yaml.safe_load(file)
             self.api_key = config['api']['key']
+            self.api_endpoints = config['api']['endpoints']
         
         self.headers = {'x-api-key': self.api_key}
         
@@ -84,7 +86,7 @@ class DataExtractor:
         Returns:
         pandas.DataFrame: A DataFrame containing details for all stores.
         """
-        number_of_stores = self.list_number_of_stores('https://aqj7u5id95.execute-api.eu-west-1.amazonaws.com/prod/number_stores')
+        number_of_stores = self.list_number_of_stores()
         if number_of_stores is None:
             return pd.DataFrame()
 
